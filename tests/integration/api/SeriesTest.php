@@ -8,6 +8,16 @@ use PHPUnit\Framework\Attributes\Test;
 
 class SeriesTest extends AnthologyTestCase
 {
+    /**
+     * Core mails each recipient in their own queued job, which reloads the
+     * user and issues an unsubscribe token. The test queue is synchronous, so
+     * those per-recipient jobs land inside the request.
+     */
+    protected function allowedRepeatedQueries(): array
+    {
+        return ['unsubscribe_tokens', 'users"."id" = ? limit ?', 'users`.`id` = ? limit ?'];
+    }
+
     #[Test]
     public function members_start_series_and_guests_cannot(): void
     {
@@ -178,6 +188,45 @@ class SeriesTest extends AnthologyTestCase
 
         [, $body] = $this->json('DELETE', '/api/anthology/series/'.$series['id'].'/follow', 3);
         $this->assertSame(0, $body['data']['followerCount']);
+    }
+
+    #[Test]
+    public function a_members_only_chapter_reaches_every_member_who_follows_with_one_check_per_set_of_groups(): void
+    {
+        $members = [];
+        $follows = [];
+        foreach (range(6, 25) as $id) {
+            $members[] = ['id' => $id, 'username' => "reader$id", 'email' => "reader$id@machine.local", 'is_email_confirmed' => $id !== 25];
+        }
+        $this->prepareDatabase([
+            User::class => $members,
+            \Flarum\Tags\Tag::class => [['id' => 3, 'name' => 'Members', 'slug' => 'members', 'position' => 2, 'is_restricted' => 1]],
+            'group_permission' => [['group_id' => \Flarum\Group\Group::MEMBER_ID, 'permission' => 'tag3.viewForum']],
+            \Flarum\Discussion\Discussion::class => [['id' => 6, 'title' => 'Chapter 6', 'slug' => 'chapter-6', 'created_at' => \Carbon\Carbon::now(), 'last_posted_at' => \Carbon\Carbon::now(), 'user_id' => 2, 'first_post_id' => 6, 'comment_count' => 1, 'is_private' => 0]],
+            \Flarum\Post\Post::class => [['id' => 6, 'discussion_id' => 6, 'created_at' => \Carbon\Carbon::now(), 'user_id' => 2, 'type' => 'comment', 'content' => '<t><p>Members only</p></t>', 'number' => 1]],
+            'discussion_tag' => [['discussion_id' => 6, 'tag_id' => 3]],
+        ]);
+
+        $series = $this->series();
+        $this->add(1, $series['id']);
+        foreach (array_merge([3, 4], range(6, 25)) as $id) {
+            $follows[] = ['series_id' => $series['id'], 'user_id' => $id, 'created_at' => \Carbon\Carbon::now()];
+        }
+        $this->database()->table('anthology_follows')->insert($follows);
+        $this->database()->table('anthology_series')->where('id', $series['id'])->update(['follower_count' => count($follows)]);
+
+        $db = $this->database();
+        $db->enableQueryLog();
+        $this->add(6, $series['id']);
+        $checks = array_filter($db->getQueryLog(), fn ($q) => str_starts_with($q['query'], 'select exists'));
+        $db->disableQueryLog();
+
+        // Everyone confirmed is told, the unconfirmed reader25 (no more than a guest) is not.
+        $sent = $this->database()->table('notifications')->where('type', 'anthologyNewChapter')->where('subject_id', 6)->pluck('user_id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+        $this->assertSame(array_merge([3, 4], range(6, 24)), $sent);
+
+        // Guests, then members, moderators and the unconfirmed set, then reader25 alone: not one per follower.
+        $this->assertCount(5, $checks);
     }
 
     #[Test]
