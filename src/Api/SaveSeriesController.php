@@ -9,13 +9,14 @@ use Ernestdefoe\Anthology\Series;
 use Flarum\Http\RequestUtil;
 use Flarum\Post\Exception\FloodingException;
 use Flarum\User\Exception\PermissionDeniedException;
+use Flarum\User\User;
 use Illuminate\Support\Str;
 use Laminas\Diactoros\Response\JsonResponse;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
-/** POST /api/anthology/series (create) and PATCH /api/anthology/series/{id} (title, description, status). */
+/** POST /api/anthology/series (create; a moderator may pass userId to start one for that member) and PATCH /api/anthology/series/{id} (title, description, status). */
 class SaveSeriesController implements RequestHandlerInterface
 {
     use Concerns;
@@ -42,8 +43,16 @@ class SaveSeriesController implements RequestHandlerInterface
                 && Series::query()->where('user_id', $actor->id)->where('created_at', '>', Carbon::now()->subHour())->count() >= self::PER_HOUR) {
                 throw new FloodingException();
             }
+            // A moderator may start one for another member, to file that member's discussions under it.
+            $owner = $actor;
+            if (isset($data['userId']) && $this->id($data['userId']) !== $actor->id) {
+                if (! Access::canModerate($actor)) {
+                    throw new PermissionDeniedException();
+                }
+                $owner = User::query()->findOrFail($this->id($data['userId']));
+            }
             $series = new Series();
-            $series->user_id = $actor->id;
+            $series->user_id = $owner->id;
             $series->status = 'ongoing';
             $series->last_chapter_at = Carbon::now();
         } else {
@@ -80,8 +89,8 @@ class SaveSeriesController implements RequestHandlerInterface
         $series->save();
 
         if ($creating) {
-            $actor->newQuery()->whereKey($actor->id)->increment('anthology_series_count');
-            $series->setRelation('user', $actor);
+            $owner->newQuery()->whereKey($owner->id)->increment('anthology_series_count');
+            $series->setRelation('user', $owner);
         }
 
         return new JsonResponse(['data' => $this->presenter->card($series, $actor) + ['description' => $series->description]], $creating ? 201 : 200);

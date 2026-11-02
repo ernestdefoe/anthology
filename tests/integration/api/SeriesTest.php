@@ -2,6 +2,7 @@
 
 namespace Ernestdefoe\Anthology\Tests\integration\api;
 
+use Ernestdefoe\Anthology\Series;
 use Ernestdefoe\Anthology\Tests\integration\AnthologyTestCase;
 use Flarum\User\User;
 use PHPUnit\Framework\Attributes\Test;
@@ -49,6 +50,34 @@ class SeriesTest extends AnthologyTestCase
 
         // A moderator may file anyone's discussion anywhere.
         $this->add(4, $mine['id'], 4);
+    }
+
+    #[Test]
+    public function a_moderator_starts_a_series_for_a_member_and_files_their_discussions_under_it(): void
+    {
+        // Only a moderator may start one in someone else's name.
+        [$status] = $this->json('POST', '/api/anthology/series', 3, ['data' => ['title' => 'Not Yours', 'userId' => 2]]);
+        $this->assertSame(403, $status);
+
+        [$status, $body, $raw] = $this->json('POST', '/api/anthology/series', 4, ['data' => ['title' => 'Old Novel', 'userId' => 2]]);
+        $this->assertSame(201, $status, $raw);
+        $this->assertSame(2, Series::query()->find($body['data']['id'])->user_id);
+        $this->assertSame(1, User::query()->find(2)->anthology_series_count);
+        $this->assertSame(0, (int) User::query()->find(4)->anthology_series_count);
+
+        // The moderator's picker lists the member's series while it is still empty; a reader's directory doesn't.
+        [, $list] = $this->json('GET', '/api/anthology/series', 4, null, ['filter' => ['user' => '2']]);
+        $this->assertSame(['Old Novel'], array_column($list['data'], 'title'));
+        [, $list] = $this->json('GET', '/api/anthology/series', 3, null, ['filter' => ['user' => '2']]);
+        $this->assertSame([], $list['data']);
+
+        $this->add(1, $body['data']['id'], 4);
+        $this->add(2, $body['data']['id'], 4);
+
+        // It is the member's own: they edit it and add to it.
+        [$status] = $this->json('PATCH', '/api/anthology/series/'.$body['data']['id'], 2, ['data' => ['status' => 'complete']]);
+        $this->assertSame(200, $status);
+        $this->assertSame(3, $this->add(3, $body['data']['id'])['number']);
     }
 
     #[Test]

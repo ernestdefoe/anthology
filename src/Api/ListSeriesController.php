@@ -2,6 +2,7 @@
 
 namespace Ernestdefoe\Anthology\Api;
 
+use Ernestdefoe\Anthology\Access;
 use Ernestdefoe\Anthology\Presenter;
 use Ernestdefoe\Anthology\Series;
 use Flarum\Http\RequestUtil;
@@ -47,7 +48,8 @@ class ListSeriesController implements RequestHandlerInterface
         if ($user) {
             $query->where('anthology_series.user_id', $user);
         }
-        if (! $user || $user !== $actor->id) {
+        // A moderator sees a member's empty series too, so they can file that member's discussions under it.
+        if (! $user || ($user !== $actor->id && ! Access::canModerate($actor))) {
             $query->whereHas('discussions', $visible);
         }
 

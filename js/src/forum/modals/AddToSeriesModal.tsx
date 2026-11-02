@@ -51,9 +51,15 @@ export default class AddToSeriesModal extends FormModal<Attrs> {
     return this.attrs.discussion.attribute<DiscussionSeries | null>('anthologySeries') || null;
   }
 
-  /** Only the discussion's author starts a new series from here: it will be theirs. */
+  /** Someone else's discussion: a moderator files it under that author's series. */
+  forOther(): boolean {
+    const author = this.attrs.discussion.user();
+    return !!author && author !== app.session.user;
+  }
+
+  /** A new series always belongs to the discussion's author; a moderator may start one for them. */
   canStart(): boolean {
-    return this.attrs.discussion.user() === app.session.user && !!app.forum.attribute('canCreateSeries');
+    return this.forOther() ? !!app.forum.attribute('canModerateSeries') : !!app.forum.attribute('canCreateSeries');
   }
 
   className() {
@@ -98,7 +104,9 @@ export default class AddToSeriesModal extends FormModal<Attrs> {
             ))}
           </div>
         ) : (
-          <p className="AnthologyEmpty">{t('add_modal.none')}</p>
+          <p className="AnthologyEmpty">
+            {this.forOther() ? t('add_modal.none_other', { user: this.attrs.discussion.user() }) : t('add_modal.none')}
+          </p>
         )}
 
         {this.options && this.options.length ? (
@@ -117,6 +125,7 @@ export default class AddToSeriesModal extends FormModal<Attrs> {
         {this.canStart() ? (
           <div className="AnthologyAddModal-new">
             <label for="anthology-new-title">{t('add_modal.new')}</label>
+            {this.forOther() ? <p className="helpText">{t('add_modal.new_for', { user: this.attrs.discussion.user() })}</p> : null}
             <div className="AnthologyAddModal-newRow">
               <input
                 id="anthology-new-title"
@@ -153,7 +162,10 @@ export default class AddToSeriesModal extends FormModal<Attrs> {
     const title = this.newTitle().trim();
     if (!title) return;
     this.loading = true;
-    saveSeries(null, { title }).then(({ data }) => this.add(data.id), this.fail.bind(this));
+    const author = this.attrs.discussion.user();
+    const data: Record<string, unknown> = { title };
+    if (author && this.forOther()) data.userId = Number(author.id());
+    saveSeries(null, data).then(({ data }) => this.add(data.id), this.fail.bind(this));
   }
 
   remove(current: DiscussionSeries) {
