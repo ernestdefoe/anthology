@@ -7,6 +7,7 @@ use Ernestdefoe\Anthology\Access;
 use Ernestdefoe\Anthology\Presenter;
 use Ernestdefoe\Anthology\Series;
 use Flarum\Http\RequestUtil;
+use Flarum\Post\Exception\FloodingException;
 use Flarum\User\Exception\PermissionDeniedException;
 use Illuminate\Support\Str;
 use Laminas\Diactoros\Response\JsonResponse;
@@ -20,6 +21,7 @@ class SaveSeriesController implements RequestHandlerInterface
     use Concerns;
 
     public const MAX_DESCRIPTION = 5000;
+    public const PER_HOUR = 10;
 
     public function __construct(private Presenter $presenter)
     {
@@ -34,6 +36,11 @@ class SaveSeriesController implements RequestHandlerInterface
         if ($creating) {
             if (! Access::canView($actor) || ! Access::canCreate($actor)) {
                 throw new PermissionDeniedException();
+            }
+            // One indexed count, on creation only: enough series for any writer, not a flood.
+            if (! Access::canModerate($actor)
+                && Series::query()->where('user_id', $actor->id)->where('created_at', '>', Carbon::now()->subHour())->count() >= self::PER_HOUR) {
+                throw new FloodingException();
             }
             $series = new Series();
             $series->user_id = $actor->id;
