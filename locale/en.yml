@@ -124,7 +124,7 @@ ernestdefoe-anthology:
     description_too_long: "The description can be up to {max} characters."
     bad_status: Choose Ongoing or Complete.
     upload_failed: The upload didn't arrive. Please try again.
-    cover_too_big: The cover can be up to 5 MB.
+    cover_too_big: The cover can be up to 5 MB and 40 megapixels.
     not_an_image: That file isn't a JPEG, PNG, GIF or WebP image.
 
   email:

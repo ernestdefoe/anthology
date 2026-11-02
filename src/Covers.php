@@ -19,6 +19,9 @@ class Covers
 {
     public const MAX_BYTES = 5 * 1024 * 1024;
     public const MAX_SIDE = 1200;
+    // Decoding needs 4 bytes a pixel whatever the file size: a few hundred KB of
+    // PNG can claim 20000 × 20000 and take gigabytes. Read the header first.
+    public const MAX_PIXELS = 40_000_000;
     private const DIR = 'anthology/';
 
     public function __construct(private Factory $filesystems, private ImageManager $images, private TranslatorInterface $translator)
@@ -43,6 +46,11 @@ class Covers
         $mime = (new \finfo(FILEINFO_MIME_TYPE))->buffer($bytes);
         if (! in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) {
             $this->fail('not_an_image');
+        }
+
+        $size = @getimagesizefromstring($bytes);
+        if (! $size || $size[0] < 1 || $size[1] < 1 || $size[0] * $size[1] > self::MAX_PIXELS) {
+            $this->fail('cover_too_big');
         }
 
         try {
