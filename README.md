@@ -16,6 +16,10 @@ Group discussions into series: novels written chapter by chapter, serials, tutor
 
 ![A chapter](screenshots/chapter.png)
 
+![The directory](screenshots/directory.png)
+
+<img src="screenshots/phone.png" alt="A series on a phone" width="300">
+
 ## Privacy
 
 Everything Anthology shows goes through Flarum's own discussion visibility. A chapter in a tag a reader can't open is not listed, counted, linked from the chapter before it or announced to them, and a series whose chapters they can't see doesn't exist for them.
