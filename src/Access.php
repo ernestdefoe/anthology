@@ -30,9 +30,10 @@ class Access
         return ! $actor->isGuest() && $actor->hasPermission('anthology.moderate');
     }
 
+    /** The owner edits while they may still make series (a suspension or a removed permission stops it). */
     public static function canEdit(User $actor, Series $series): bool
     {
-        return self::canModerate($actor) || (! $actor->isGuest() && $series->user_id === $actor->id);
+        return self::canModerate($actor) || (self::canCreate($actor) && $series->user_id === $actor->id);
     }
 
     public static function canAdd(User $actor, Discussion $discussion, Series $series): bool
@@ -46,7 +47,7 @@ class Access
             && (int) $discussion->user_id === $actor->id;
     }
 
-    /** Taking a chapter out: the series' owner, the discussion's author or a moderator. */
+    /** Taking a chapter out: the series' owner, the discussion's author (always) or a moderator. */
     public static function canRemove(User $actor, Discussion $discussion, Series $series): bool
     {
         return self::canEdit($actor, $series) || (! $actor->isGuest() && (int) $discussion->user_id === $actor->id);
