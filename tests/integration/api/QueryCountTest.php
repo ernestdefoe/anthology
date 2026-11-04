@@ -61,6 +61,7 @@ class QueryCountTest extends AnthologyTestCase
         $this->json('POST', '/api/anthology/series/'.$first['id'].'/follow', 3);
 
         $directory = $this->queries('/api/anthology/series');
+        $tagged = $this->queries('/api/anthology/series', ['filter' => ['tag' => 'stories'], 'tags' => '1']);
         $page = $this->queries('/api/anthology/series/'.$first['id']);
         $chapter = $this->queries('/api/discussions/1');
 
@@ -75,6 +76,8 @@ class QueryCountTest extends AnthologyTestCase
         }
 
         $this->assertQueries($directory, '/api/anthology/series');
+        $this->assertQueries($tagged, '/api/anthology/series', ['filter' => ['tag' => 'stories'], 'tags' => '1']);
+        $this->assertSame($directory + 1, $tagged, 'the tag menu is one query');
         $this->assertQueries($page, '/api/anthology/series/'.$first['id']);
         $this->assertQueries($chapter, '/api/discussions/1');
     }

@@ -1,10 +1,16 @@
 import app from 'flarum/admin/app';
+import { extend } from 'flarum/common/extend';
+import BasicsPage from 'flarum/admin/components/BasicsPage';
 
-/** Anthology's admin: what to call a series, the sidebar link and three permissions. */
+/** Anthology's admin: what to call a series, the sidebar link, three permissions and the directory as a home page choice. */
 app.initializers.add('ernestdefoe-anthology', () => {
   const t = (key: string) => app.translator.trans(`ernestdefoe-anthology.admin.${key}`);
   const nouns: Record<string, any> = {};
   ['series', 'novel', 'story', 'book'].forEach((n) => (nouns[n] = t('settings.nouns.' + n)));
+
+  extend(BasicsPage, 'homePageItems', (items) => {
+    items.add('anthology', { path: '/series', label: t('basics.home_page') });
+  });
 
   app.registry
     .for('ernestdefoe-anthology')

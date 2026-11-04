@@ -61,8 +61,17 @@ export interface DiscussionSeries extends Ref {
 
 const api = (path: string) => app.forum.attribute('apiUrl') + '/anthology' + path;
 
+/** A tag in the directory's tag menu (Tags on). */
+export interface TagOption {
+  id: number;
+  slug: string;
+  name: string;
+  color: string | null;
+  icon: string | null;
+}
+
 export const listSeries = (params: Record<string, unknown>) =>
-  app.request<{ data: SeriesCard[]; meta: { next: number | null } }>({ method: 'GET', url: api('/series'), params });
+  app.request<{ data: SeriesCard[]; meta: { next: number | null; tags?: TagOption[] } }>({ method: 'GET', url: api('/series'), params });
 
 export const showSeries = (id: number) => app.request<{ data: Series }>({ method: 'GET', url: api('/series/' + id) });
 

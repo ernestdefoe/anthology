@@ -23,6 +23,8 @@ const seriesOf = (discussion: Discussion) => discussion.attribute<DiscussionSeri
  * wiring and the chapter bar. Every page and modal is its own chunk.
  */
 app.initializers.add('ernestdefoe-anthology', () => {
+  // When the directory is the home page, core moves the last route at /series to '/': this one keeps /series working.
+  app.routes['anthology.directory'] = { path: '/series', component: () => import('./pages/DirectoryPage') };
   app.routes['anthology.index'] = { path: '/series', component: () => import('./pages/DirectoryPage') };
   app.routes['anthology.series'] = { path: '/series/:id', component: () => import('./pages/SeriesPage') };
   app.routes['user.anthology'] = { path: '/u/:username/series', component: () => import('./pages/UserSeriesPage') };

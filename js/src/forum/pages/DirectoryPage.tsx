@@ -3,25 +3,32 @@ import Page from 'flarum/common/components/Page';
 import PageStructure from 'flarum/forum/components/PageStructure';
 import IndexSidebar from 'flarum/forum/components/IndexSidebar';
 import Button from 'flarum/common/components/Button';
+import LinkButton from 'flarum/common/components/LinkButton';
 import Select from 'flarum/common/components/Select';
 import LoadingIndicator from 'flarum/common/components/LoadingIndicator';
 import extractText from 'flarum/common/utils/extractText';
 import type Mithril from 'mithril';
 import { listSeries } from '../../common/api';
 import { seriesUrl } from '../../common/urls';
-import type { SeriesCard as Card } from '../../common/api';
+import type { SeriesCard as Card, TagOption } from '../../common/api';
 import SeriesCard from '../components/SeriesCard';
 import { failed, t } from '../util';
 
 const STATUSES = ['', 'ongoing', 'complete'];
 const SORTS = ['latest', 'new', 'popular', 'title'];
 
-/** /series — every series with a chapter the reader can open: status tabs, sort and title search. */
+/**
+ * /series — every series with a chapter the reader can open: status tabs,
+ * tag, sort and title search. It can be the forum's home page (Basics), and
+ * then it links to the discussion list.
+ */
 export default class DirectoryPage extends Page {
   series: Card[] = [];
   loading = true;
   next: number | null = null;
   status = '';
+  tag = '';
+  tags: TagOption[] = [];
   sort = 'latest';
   query = '';
   timer = 0;
@@ -39,9 +46,13 @@ export default class DirectoryPage extends Page {
     this.loading = true;
     const filter: Record<string, string> = {};
     if (this.status) filter.status = this.status;
+    if (this.tag) filter.tag = this.tag;
     if (this.query.trim()) filter.q = this.query.trim();
     const params: Record<string, unknown> = { filter, sort: this.sort };
     if (more && this.next) params.page = { offset: this.next };
+    // The tag menu comes with the first page.
+    const first = !more && !this.asked;
+    if (first) params.tags = 1;
 
     const ask = ++this.asked;
     listSeries(params).then(
@@ -50,6 +61,7 @@ export default class DirectoryPage extends Page {
         if (ask !== this.asked) return;
         this.series = more ? [...this.series, ...data] : data;
         this.next = meta.next;
+        if (first) this.tags = meta.tags || [];
         this.loading = false;
         m.redraw();
       },
@@ -64,20 +76,30 @@ export default class DirectoryPage extends Page {
   view(): Mithril.Children {
     const sorts: Record<string, string> = {};
     SORTS.forEach((s) => (sorts[s] = extractText(t('directory.sort.' + s))));
+    const tags: Record<string, string> = { '': extractText(t('directory.all_tags')) };
+    this.tags.forEach((tag) => (tags[tag.slug] = tag.name));
+    const home = app.forum.attribute('defaultRoute') === '/series';
 
     return (
       <PageStructure className="AnthologyDirectoryPage" sidebar={() => <IndexSidebar />}>
         <div className="AnthologyHead">
           <h2 className="AnthologyHead-title">{t('nav')}</h2>
-          {app.forum.attribute('canCreateSeries') ? (
-            <Button
-              className="Button Button--primary"
-              icon="fas fa-plus"
-              onclick={() => app.modal.show(() => import('../modals/SeriesEditModal'), { onsave: (card: Card) => m.route.set(seriesUrl(card)) })}
-            >
-              {t('directory.new')}
-            </Button>
-          ) : null}
+          <div className="AnthologyHead-actions">
+            {home ? (
+              <LinkButton className="Button" icon="fas fa-comments" href={app.route('index')}>
+                {t('directory.forum')}
+              </LinkButton>
+            ) : null}
+            {app.forum.attribute('canCreateSeries') ? (
+              <Button
+                className="Button Button--primary"
+                icon="fas fa-plus"
+                onclick={() => app.modal.show(() => import('../modals/SeriesEditModal'), { onsave: (card: Card) => m.route.set(seriesUrl(card)) })}
+              >
+                {t('directory.new')}
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         <div className="AnthologyToolbar">
@@ -96,6 +118,18 @@ export default class DirectoryPage extends Page {
               </Button>
             ))}
           </div>
+          {this.tags.length ? (
+            <Select
+              className="AnthologyToolbar-tag"
+              options={tags}
+              value={this.tag}
+              aria-label={extractText(t('directory.tag_label'))}
+              onchange={(value: string) => {
+                this.tag = value;
+                this.load();
+              }}
+            />
+          ) : null}
           <Select
             options={sorts}
             value={this.sort}
@@ -127,7 +161,7 @@ export default class DirectoryPage extends Page {
         {this.loading ? <LoadingIndicator display="block" /> : null}
         {!this.loading && !this.series.length ? (
           <p className="AnthologyEmpty">
-            {this.query || this.status
+            {this.query || this.status || this.tag
               ? t('directory.no_results')
               : t(app.forum.attribute('canCreateSeries') ? 'directory.empty' : 'directory.empty_guest')}
           </p>

@@ -288,4 +288,32 @@ class SeriesTest extends AnthologyTestCase
         $this->assertFalse($forum['data']['attributes']['canModerateSeries']);
         $this->assertSame('series', $forum['data']['attributes']['anthologyNoun']);
     }
+
+    #[Test]
+    public function the_directory_filters_by_a_chapters_tag_and_lists_only_tags_in_use(): void
+    {
+        $this->database()->table('tags')->insert(['id' => 3, 'name' => 'Poetry', 'slug' => 'poetry']);
+        $this->database()->table('tags')->insert(['id' => 4, 'name' => 'Empty', 'slug' => 'empty', 'position' => 2]);
+        $this->database()->table('discussion_tag')->insert(['discussion_id' => 3, 'tag_id' => 3]);
+
+        $road = $this->series();
+        $this->add(1, $road['id']);
+        $verse = $this->series('Verse');
+        $this->add(3, $verse['id']);
+        $secret = $this->series('Secret Saga', 1);
+        $this->add(5, $secret['id'], 1);
+
+        $ids = fn (string $tag, int $actor = 3) => array_column($this->json('GET', '/api/anthology/series', $actor, null, ['filter' => ['tag' => $tag], 'sort' => 'title'])[1]['data'], 'id');
+        $this->assertSame([$verse['id']], $ids('poetry'));
+        $this->assertSame([$road['id'], $verse['id']], $ids('stories'));
+        $this->assertSame([], $ids('secret'));
+        $this->assertSame([$secret['id']], $ids('secret', 1));
+        $this->assertSame([], $ids('no-such-tag'));
+
+        // The tag menu: tags with a chapter the reader can open, primary tags in order first.
+        $tags = fn (int $actor) => array_column($this->json('GET', '/api/anthology/series', $actor, null, ['tags' => '1'])[1]['meta']['tags'], 'slug');
+        $this->assertSame(['stories', 'poetry'], $tags(3));
+        $this->assertSame(['stories', 'secret', 'poetry'], $tags(1));
+        $this->assertArrayNotHasKey('tags', $this->json('GET', '/api/anthology/series', 3)[1]['meta']);
+    }
 }
