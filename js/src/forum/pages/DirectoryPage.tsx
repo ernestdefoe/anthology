@@ -1,6 +1,7 @@
 import app from 'flarum/forum/app';
 import Page from 'flarum/common/components/Page';
 import PageStructure from 'flarum/forum/components/PageStructure';
+import IndexPage from 'flarum/forum/components/IndexPage';
 import IndexSidebar from 'flarum/forum/components/IndexSidebar';
 import Button from 'flarum/common/components/Button';
 import LinkButton from 'flarum/common/components/LinkButton';
@@ -20,7 +21,8 @@ const SORTS = ['latest', 'new', 'popular', 'title'];
 /**
  * /series — every series with a chapter the reader can open: status tabs,
  * tag, sort and title search. It can be the forum's home page (Basics), and
- * then it links to the discussion list.
+ * then it shows the home page's banner (core's welcome banner, or whatever an
+ * extension puts there) and links to the discussion list.
  */
 export default class DirectoryPage extends Page {
   series: Card[] = [];
@@ -81,7 +83,11 @@ export default class DirectoryPage extends Page {
     const home = app.forum.attribute('defaultRoute') === '/series';
 
     return (
-      <PageStructure className="AnthologyDirectoryPage" sidebar={() => <IndexSidebar />}>
+      <PageStructure
+        className="AnthologyDirectoryPage"
+        hero={home ? () => IndexPage.prototype.hero.call(this as any) : undefined}
+        sidebar={() => <IndexSidebar />}
+      >
         <div className="AnthologyHead">
           <h2 className="AnthologyHead-title">{t('nav')}</h2>
           <div className="AnthologyHead-actions">
