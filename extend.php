@@ -16,6 +16,7 @@ use Ernestdefoe\Anthology\Api;
 use Ernestdefoe\Anthology\Content\SeriesDocument;
 use Ernestdefoe\Anthology\DiscussionSeries;
 use Ernestdefoe\Anthology\Notification\NewChapterBlueprint;
+use Ernestdefoe\Anthology\Series;
 use Flarum\Api\Context;
 use Flarum\Api\Resource\DiscussionResource;
 use Flarum\Api\Resource\ForumResource;
@@ -82,11 +83,17 @@ return [
                 ->get(fn ($forum, Context $context) => Access::canModerate($context->getActor())),
         ]),
 
-    // A column on the user row: the profile tab shows only when there is something in it.
+    // The profile only, never lists: the series this reader can open, one count query.
+    // A series counts once it has a chapter they can read, so an empty one (a draft)
+    // or one whose chapters are all in a hidden tag is never counted or hinted at.
     (new Extend\ApiResource(UserResource::class))
         ->fields(fn () => [
             Schema\Integer::make('anthologySeriesCount')
-                ->get(fn (User $user) => (int) $user->anthology_series_count),
+                ->visible(fn (User $user, Context $context) => $context->showing(UserResource::class) && Access::canView($context->getActor()))
+                ->get(fn (User $user, Context $context) => Series::query()
+                    ->where('user_id', $user->id)
+                    ->whereHas('discussions', fn ($d) => $d->whereVisibleTo($context->getActor()))
+                    ->count()),
         ]),
 
     // The discussion page only, never lists: which series this chapter is in.

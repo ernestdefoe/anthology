@@ -278,7 +278,7 @@ class SeriesTest extends AnthologyTestCase
     #[Test]
     public function the_profile_tab_count_and_forum_permissions_are_sent(): void
     {
-        $this->series();
+        $this->add(1, $this->series()['id']);
         [, $body] = $this->json('GET', '/api/users/2', 3);
         $this->assertSame(1, $body['data']['attributes']['anthologySeriesCount']);
 

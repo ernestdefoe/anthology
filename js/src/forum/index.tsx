@@ -47,12 +47,13 @@ app.initializers.add('ernestdefoe-anthology', () => {
     const user = this.user;
     if (!user || !app.forum.attribute('canViewSeries')) return;
     const own = app.session.user === user && app.forum.attribute('canCreateSeries');
-    if (!own && !user.attribute<number>('anthologySeriesCount')) return;
+    const count = user.attribute<number>('anthologySeriesCount') || 0;
+    if (!own && !count) return;
 
     items.add(
       'anthology',
       <LinkButton href={app.route('user.anthology', { username: user.slug() })} icon={ICON}>
-        {t('profile.nav')}
+        {t('profile.nav')} <span className="Button-badge">{count}</span>
       </LinkButton>,
       79
     );
