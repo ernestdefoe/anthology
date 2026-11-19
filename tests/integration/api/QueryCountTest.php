@@ -25,7 +25,8 @@ class QueryCountTest extends AnthologyTestCase
             }
         });
         $this->listening = true;
-        $request = $this->request('GET', $path, ['authenticatedAs' => $actor])->withQueryParams($query);
+        // Actor 0: a guest.
+        $request = $this->request('GET', $path, $actor ? ['authenticatedAs' => $actor] : [])->withQueryParams($query);
         $this->send($request); // warm
         $this->log = [];
         $response = $this->send($request);
@@ -58,28 +59,40 @@ class QueryCountTest extends AnthologyTestCase
         $first = $this->series();
         $this->add(1, $first['id']);
         $this->database()->table('discussion_user')->insert(['user_id' => 3, 'discussion_id' => 1, 'last_read_post_number' => 1]);
-        $this->json('POST', '/api/anthology/series/'.$first['id'].'/follow', 3);
+        $this->patchSeries($first['id'], 3, ['following' => true]);
 
-        $directory = $this->queries('/api/anthology/series');
-        $tagged = $this->queries('/api/anthology/series', ['filter' => ['tag' => 'stories'], 'tags' => '1']);
-        $page = $this->queries('/api/anthology/series/'.$first['id']);
-        $chapter = $this->queries('/api/discussions/1');
-
-        $this->discussions(12);
-        for ($i = 0; $i < 6; $i++) {
-            $series = $this->series("Series $i", $i % 2 ? 2 : 1);
-            $this->add(100 + $i, $series['id'], 1);
+        $published = ['filter' => ['published' => '1']];
+        $tagsMenu = ['filter' => ['published' => '1', 'tag' => 'stories'], 'withTags' => '1'];
+        // A member (with read state and a follow) and a guest, on one series of one chapter.
+        $cost = [];
+        foreach ([3, 0] as $actor) {
+            $cost[$actor] = [
+                'directory' => $this->queries('/api/anthology-series', $published, $actor),
+                'tagged' => $this->queries('/api/anthology-series', $tagsMenu, $actor),
+                'page' => $this->queries('/api/anthology-series/'.$first['id'], [], $actor),
+                'chapter' => $this->queries('/api/discussions/1', [], $actor),
+            ];
         }
-        for ($i = 6; $i < 12; $i++) {
+
+        // Then 20 series in the directory, and 7 chapters (6 of them read) in the first.
+        $this->discussions(25);
+        for ($i = 0; $i < 19; $i++) {
+            $series = $this->series("Series $i", $i % 2 ? 2 : 4);
+            $this->add(100 + $i, $series['id'], 4);
+        }
+        for ($i = 19; $i < 25; $i++) {
             $this->add(100 + $i, $first['id']);
             $this->database()->table('discussion_user')->insert(['user_id' => 3, 'discussion_id' => 100 + $i, 'last_read_post_number' => 1]);
         }
+        $this->assertCount(20, $this->listSeries(3, $published)[0]);
 
-        $this->assertQueries($directory, '/api/anthology/series');
-        $this->assertQueries($tagged, '/api/anthology/series', ['filter' => ['tag' => 'stories'], 'tags' => '1']);
-        $this->assertSame($directory + 1, $tagged, 'the tag menu is one query');
-        $this->assertQueries($page, '/api/anthology/series/'.$first['id']);
-        $this->assertQueries($chapter, '/api/discussions/1');
+        foreach ([3, 0] as $actor) {
+            $this->assertQueries($cost[$actor]['directory'], '/api/anthology-series', $published, $actor);
+            $this->assertQueries($cost[$actor]['tagged'], '/api/anthology-series', $tagsMenu, $actor);
+            $this->assertSame($cost[$actor]['directory'] + 1, $cost[$actor]['tagged'], 'the tag menu is one query');
+            $this->assertQueries($cost[$actor]['page'], '/api/anthology-series/'.$first['id'], [], $actor);
+            $this->assertQueries($cost[$actor]['chapter'], '/api/discussions/1', [], $actor);
+        }
     }
 
     #[Test]

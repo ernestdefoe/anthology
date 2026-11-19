@@ -19,19 +19,31 @@ class SeriesTest extends AnthologyTestCase
         return ['unsubscribe_tokens', 'users"."id" = ? limit ?', 'users`.`id` = ? limit ?'];
     }
 
+    /** The message the API answers with (the test app has no locale catalogue for extensions, so it may be the key). */
+    private function trans(string $key): string
+    {
+        return $this->app()->getContainer()->make('translator')->trans('ernestdefoe-anthology.api.'.$key);
+    }
+
     #[Test]
     public function members_start_series_and_guests_cannot(): void
     {
         $series = $this->series();
         $this->assertSame('the-long-road', $series['slug']);
         $this->assertSame('ongoing', $series['status']);
-        $this->assertSame(1, User::query()->find(2)->anthology_series_count);
 
-        [$status] = $this->json('POST', '/api/anthology/series', null, ['data' => ['title' => 'Nope']]);
+        [$status] = $this->createSeries(null, ['title' => 'Nope']);
         $this->assertContains($status, [401, 403]);
 
-        [$status] = $this->json('POST', '/api/anthology/series', 2, ['data' => ['title' => '   ']]);
-        $this->assertSame(422, $status);
+        [$status, , $raw] = $this->patchSeries($series['id'], 2, ['status' => 'bogus']);
+        $this->assertSame(422, $status, $raw);
+        $this->assertSame($this->trans('bad_status'), json_decode($raw, true)['errors'][0]['detail']);
+        [$status, , $raw] = $this->createSeries(2, ['title' => '   ']);
+        $this->assertSame(422, $status, $raw);
+        $this->assertSame('/data/attributes/title', json_decode($raw, true)['errors'][0]['source']['pointer']);
+        [$status, , $raw] = $this->createSeries(2, ['title' => str_repeat('x', 201)]);
+        $this->assertSame(422, $status, $raw);
+        $this->assertSame($this->trans('title_too_long'), json_decode($raw, true)['errors'][0]['detail']);
     }
 
     #[Test]
@@ -56,28 +68,25 @@ class SeriesTest extends AnthologyTestCase
     public function a_moderator_starts_a_series_for_a_member_and_files_their_discussions_under_it(): void
     {
         // Only a moderator may start one in someone else's name.
-        [$status] = $this->json('POST', '/api/anthology/series', 3, ['data' => ['title' => 'Not Yours', 'userId' => 2]]);
+        [$status] = $this->createSeries(3, ['title' => 'Not Yours'], 2);
         $this->assertSame(403, $status);
+        $this->assertSame(0, Series::query()->count());
 
-        [$status, $body, $raw] = $this->json('POST', '/api/anthology/series', 4, ['data' => ['title' => 'Old Novel', 'userId' => 2]]);
+        [$status, $novel, $raw] = $this->createSeries(4, ['title' => 'Old Novel'], 2);
         $this->assertSame(201, $status, $raw);
-        $this->assertSame(2, Series::query()->find($body['data']['id'])->user_id);
-        $this->assertSame(1, User::query()->find(2)->anthology_series_count);
-        $this->assertSame(0, (int) User::query()->find(4)->anthology_series_count);
+        $this->assertSame(2, Series::query()->find($novel['id'])->user_id);
 
-        // The moderator's picker lists the member's series while it is still empty; a reader's directory doesn't.
-        [, $list] = $this->json('GET', '/api/anthology/series', 4, null, ['filter' => ['user' => '2']]);
-        $this->assertSame(['Old Novel'], array_column($list['data'], 'title'));
-        [, $list] = $this->json('GET', '/api/anthology/series', 3, null, ['filter' => ['user' => '2']]);
-        $this->assertSame([], $list['data']);
+        // The moderator's picker lists the member's series while it is still empty; a reader's list doesn't.
+        $this->assertSame(['Old Novel'], array_column($this->listSeries(4, ['filter' => ['user' => '2']])[0], 'title'));
+        $this->assertSame([], $this->listSeries(3, ['filter' => ['user' => '2']])[0]);
 
-        $this->add(1, $body['data']['id'], 4);
-        $this->add(2, $body['data']['id'], 4);
+        $this->add(1, $novel['id'], 4);
+        $this->add(2, $novel['id'], 4);
 
         // It is the member's own: they edit it and add to it.
-        [$status] = $this->json('PATCH', '/api/anthology/series/'.$body['data']['id'], 2, ['data' => ['status' => 'complete']]);
-        $this->assertSame(200, $status);
-        $this->assertSame(3, $this->add(3, $body['data']['id'])['number']);
+        [$status, , $raw] = $this->patchSeries($novel['id'], 2, ['status' => 'complete']);
+        $this->assertSame(200, $status, $raw);
+        $this->assertSame(3, $this->add(3, $novel['id'])['number']);
     }
 
     #[Test]
@@ -114,16 +123,16 @@ class SeriesTest extends AnthologyTestCase
         $this->add(5, $series['id'], 1); // ...so the admin files it.
         $this->add(2, $series['id']);
 
-        [, $body] = $this->json('GET', '/api/anthology/series/'.$series['id'], 3);
-        $this->assertSame([1, 2], array_column($body['data']['chapters'], 'id'));
-        $this->assertSame(2, $body['data']['chapterCount']);
+        [, $body] = $this->showSeries($series['id'], 3);
+        $this->assertSame([1, 2], array_column($body['chapters'], 'id'));
+        $this->assertSame(2, $body['chapterCount']);
         $this->assertStringNotContainsString('Chapter 5', json_encode($body));
 
         [, $body] = $this->json('GET', '/api/discussions/1', 3);
         $this->assertSame(2, $body['data']['attributes']['anthologySeries']['next']['id']);
 
-        [, $body] = $this->json('GET', '/api/anthology/series/'.$series['id'], 1);
-        $this->assertSame([1, 5, 2], array_column($body['data']['chapters'], 'id'));
+        [, $body] = $this->showSeries($series['id'], 1);
+        $this->assertSame([1, 5, 2], array_column($body['chapters'], 'id'));
     }
 
     #[Test]
@@ -132,18 +141,19 @@ class SeriesTest extends AnthologyTestCase
         $series = $this->series('Secret Saga');
         $this->add(5, $series['id'], 1);
 
-        [$status] = $this->json('GET', '/api/anthology/series/'.$series['id'], 3);
+        [$status] = $this->showSeries($series['id'], 3);
         $this->assertSame(404, $status);
-        [, $list] = $this->json('GET', '/api/anthology/series', 3);
-        $this->assertSame([], $list['data']);
+        $this->assertSame([], $this->listSeries(3, ['filter' => ['published' => '1']])[0]);
+        $this->assertSame([], $this->listSeries(3)[0]);
+        $this->assertSame([], $this->listSeries(null)[0]);
 
-        // Its owner still sees it among their own.
-        [, $mine] = $this->json('GET', '/api/anthology/series', 2, null, ['filter' => ['mine' => '1']]);
-        $this->assertSame([$series['id']], array_column($mine['data'], 'id'));
-        $this->assertSame(0, $mine['data'][0]['chapterCount']);
+        // Its owner still sees it among their own, but not in the directory.
+        [$mine] = $this->listSeries(2, ['filter' => ['mine' => '1']]);
+        $this->assertSame([$series['id']], array_column($mine, 'id'));
+        $this->assertSame(0, $mine[0]['chapterCount']);
+        $this->assertSame([], $this->listSeries(2, ['filter' => ['published' => '1']])[0]);
 
-        [, $list] = $this->json('GET', '/api/anthology/series', 1);
-        $this->assertSame([$series['id']], array_column($list['data'], 'id'));
+        $this->assertSame([$series['id']], array_column($this->listSeries(1, ['filter' => ['published' => '1']])[0], 'id'));
     }
 
     #[Test]
@@ -154,8 +164,8 @@ class SeriesTest extends AnthologyTestCase
         $this->add(2, $series['id']);
         $this->database()->table('discussion_user')->insert(['user_id' => 3, 'discussion_id' => 1, 'last_read_post_number' => 1]);
 
-        [, $body] = $this->json('GET', '/api/anthology/series/'.$series['id'], 3);
-        $this->assertSame([true, false], array_column($body['data']['chapters'], 'read'));
+        [, $body] = $this->showSeries($series['id'], 3);
+        $this->assertSame([true, false], array_column($body['chapters'], 'read'));
     }
 
     #[Test]
@@ -166,20 +176,24 @@ class SeriesTest extends AnthologyTestCase
             $this->add($id, $series['id']);
         }
 
-        [$status] = $this->json('PATCH', '/api/anthology/series/'.$series['id'].'/order', 3, ['data' => ['ids' => [3, 2, 1]]]);
+        [$status] = $this->patchSeries($series['id'], 3, ['chapterOrder' => [3, 2, 1]]);
         $this->assertSame(403, $status);
 
-        [$status] = $this->json('PATCH', '/api/anthology/series/'.$series['id'].'/order', 2, ['data' => ['ids' => [3, 1]]]);
-        $this->assertSame(204, $status);
-        [, $body] = $this->json('GET', '/api/anthology/series/'.$series['id'], 2);
-        $this->assertSame([3, 1, 2], array_column($body['data']['chapters'], 'id'));
+        // One statement writes every moved row.
+        $db = $this->database();
+        $db->enableQueryLog();
+        [$status, , $raw] = $this->patchSeries($series['id'], 2, ['chapterOrder' => [3, 1]]);
+        $writes = array_filter($db->getQueryLog(), fn ($q) => stripos($q['query'], 'anthology_chapters') !== false && preg_match('/^(insert|update)/i', $q['query']));
+        $db->disableQueryLog();
+        $this->assertSame(200, $status, $raw);
+        $this->assertCount(1, $writes);
+        [, $body] = $this->showSeries($series['id'], 2);
+        $this->assertSame([3, 1, 2], array_column($body['chapters'], 'id'));
 
-        [$status] = $this->json('DELETE', '/api/anthology/chapters/1', 3);
-        $this->assertSame(403, $status);
-        [$status] = $this->json('DELETE', '/api/anthology/chapters/1', 2);
-        $this->assertSame(200, $status);
-        [, $body] = $this->json('GET', '/api/anthology/series/'.$series['id'], 2);
-        $this->assertSame([3, 2], array_column($body['data']['chapters'], 'id'));
+        $this->add(1, null, 3, 403);
+        $this->assertNull($this->add(1, null, 2));
+        [, $body] = $this->showSeries($series['id'], 2);
+        $this->assertSame([3, 2], array_column($body['chapters'], 'id'));
     }
 
     #[Test]
@@ -199,14 +213,19 @@ class SeriesTest extends AnthologyTestCase
         $series = $this->series();
         $this->add(1, $series['id']);
 
-        [$status, $body] = $this->json('POST', '/api/anthology/series/'.$series['id'].'/follow', 3);
-        $this->assertSame(200, $status);
-        $this->assertTrue($body['data']['following']);
-        $this->assertSame(1, $body['data']['followerCount']);
-        $this->json('POST', '/api/anthology/series/'.$series['id'].'/follow', 3); // twice is still once
+        [$status, $body, $raw] = $this->patchSeries($series['id'], 3, ['following' => true]);
+        $this->assertSame(200, $status, $raw);
+        $this->assertTrue($body['following']);
+        $this->assertSame(1, $body['followerCount']);
+        $this->assertSame(1, $this->patchSeries($series['id'], 3, ['following' => true])[1]['followerCount']); // twice is still once
 
-        [$status] = $this->json('POST', '/api/anthology/series/'.$series['id'].'/follow', 2);
+        [$status] = $this->patchSeries($series['id'], 2, ['following' => true]);
         $this->assertSame(403, $status); // your own
+        // A guest can't follow; nor can a reader edit what they follow.
+        [$status] = $this->json('PATCH', '/api/anthology-series/'.$series['id'], null, ['data' => ['type' => 'anthology-series', 'id' => (string) $series['id'], 'attributes' => ['following' => true]]]);
+        $this->assertContains($status, [401, 403]);
+        [$status] = $this->patchSeries($series['id'], 3, ['title' => 'Mine now']);
+        $this->assertSame(403, $status);
 
         $this->add(2, $series['id']);
         $this->add(5, $series['id'], 1);  // hidden from carol
@@ -215,8 +234,7 @@ class SeriesTest extends AnthologyTestCase
         $this->assertSame([[3, 2]], $sent->map(fn ($n) => [(int) $n->user_id, (int) $n->subject_id])->all());
         $this->assertSame(['seriesId' => $series['id'], 'seriesTitle' => 'The Long Road'], json_decode($sent[0]->data, true));
 
-        [, $body] = $this->json('DELETE', '/api/anthology/series/'.$series['id'].'/follow', 3);
-        $this->assertSame(0, $body['data']['followerCount']);
+        $this->assertSame(0, $this->patchSeries($series['id'], 3, ['following' => false])[1]['followerCount']);
     }
 
     #[Test]
@@ -264,15 +282,17 @@ class SeriesTest extends AnthologyTestCase
         $series = $this->series();
         $this->add(1, $series['id']);
 
-        [$status] = $this->json('DELETE', '/api/anthology/series/'.$series['id'], 3);
+        [$status] = $this->json('DELETE', '/api/anthology-series/'.$series['id'], 3);
         $this->assertSame(403, $status);
-        [$status] = $this->json('DELETE', '/api/anthology/series/'.$series['id'], 2);
+        [$status] = $this->json('DELETE', '/api/anthology-series/'.$series['id'], 2);
         $this->assertSame(204, $status);
 
         $this->assertSame(0, $this->database()->table('anthology_chapters')->count());
+        $this->assertSame(0, $this->database()->table('anthology_series_words')->count());
         [$status] = $this->json('GET', '/api/discussions/1', 3);
         $this->assertSame(200, $status);
-        $this->assertSame(0, User::query()->find(2)->anthology_series_count);
+        // Nothing about series is kept on the core users table.
+        $this->assertFalse($this->database()->getSchemaBuilder()->hasColumn('users', 'anthology_series_count'));
     }
 
     #[Test]
@@ -303,7 +323,7 @@ class SeriesTest extends AnthologyTestCase
         $secret = $this->series('Secret Saga', 1);
         $this->add(5, $secret['id'], 1);
 
-        $ids = fn (string $tag, int $actor = 3) => array_column($this->json('GET', '/api/anthology/series', $actor, null, ['filter' => ['tag' => $tag], 'sort' => 'title'])[1]['data'], 'id');
+        $ids = fn (string $tag, int $actor = 3) => array_column($this->listSeries($actor, ['filter' => ['tag' => $tag, 'published' => '1'], 'sort' => 'title'])[0], 'id');
         $this->assertSame([$verse['id']], $ids('poetry'));
         $this->assertSame([$road['id'], $verse['id']], $ids('stories'));
         $this->assertSame([], $ids('secret'));
@@ -311,9 +331,94 @@ class SeriesTest extends AnthologyTestCase
         $this->assertSame([], $ids('no-such-tag'));
 
         // The tag menu: tags with a chapter the reader can open, primary tags in order first.
-        $tags = fn (int $actor) => array_column($this->json('GET', '/api/anthology/series', $actor, null, ['tags' => '1'])[1]['meta']['tags'], 'slug');
+        $tags = fn (int $actor) => array_column($this->listSeries($actor, ['withTags' => '1'])[1]['tags'], 'slug');
         $this->assertSame(['stories', 'poetry'], $tags(3));
         $this->assertSame(['stories', 'secret', 'poetry'], $tags(1));
-        $this->assertArrayNotHasKey('tags', $this->json('GET', '/api/anthology/series', 3)[1]['meta']);
+        $this->assertArrayNotHasKey('tags', $this->listSeries(3)[1]);
+    }
+
+    #[Test]
+    public function the_directory_searches_the_start_of_title_words_in_any_case_and_filters_by_status(): void
+    {
+        $road = $this->series('The Long Road');
+        $this->add(1, $road['id']);
+        $verse = $this->series('Verse 100%');
+        $this->add(2, $verse['id']);
+        $this->patchSeries($verse['id'], 2, ['status' => 'complete']);
+
+        $titles = fn (array $filter) => array_column($this->listSeries(3, ['filter' => $filter + ['published' => '1'], 'sort' => 'title'])[0], 'title');
+        $this->assertSame(['The Long Road'], $titles(['title' => 'long']));
+        $this->assertSame(['The Long Road'], $titles(['title' => 'ROAD the']));
+        $this->assertSame(['Verse 100%'], $titles(['title' => 'vers 10']));
+        $this->assertSame([], $titles(['title' => 'oad']));       // the start of a word, not the middle
+        $this->assertSame([], $titles(['title' => 'long verse'])); // every word typed must match
+        $this->assertSame(['Verse 100%'], $titles(['status' => 'complete']));
+        $this->assertSame(['The Long Road'], $titles(['status' => 'ongoing']));
+        $this->assertSame(['The Long Road', 'Verse 100%'], $titles([]));
+        $this->assertSame(['Verse 100%'], $titles(['-title' => 'long']));  // negated
+
+        // A new title is searched by its new words only.
+        $this->patchSeries($road['id'], 2, ['title' => 'Winter Orchard']);
+        $this->assertSame([], $titles(['title' => 'road']));
+        $this->assertSame(['Winter Orchard'], $titles(['title' => 'orch']));
+    }
+
+    #[Test]
+    public function readers_without_the_view_permission_get_nothing(): void
+    {
+        $this->database()->table('anthology_series')->insert(['id' => 1, 'user_id' => 2, 'title' => 'Road', 'slug' => 'road', 'status' => 'ongoing', 'follower_count' => 0, 'last_chapter_at' => '2026-11-01 00:00:00', 'created_at' => '2026-11-01 00:00:00', 'updated_at' => '2026-11-01 00:00:00']);
+        $this->database()->table('anthology_chapters')->insert(['series_id' => 1, 'discussion_id' => 1, 'position' => 1, 'created_at' => '2026-11-01 00:00:00']);
+        // Before the first request: permissions load once per app.
+        $this->database()->table('group_permission')->where('permission', 'anthology.view')->delete();
+
+        $this->assertSame(403, $this->json('GET', '/api/anthology-series', 3)[0]);
+        $this->assertContains($this->showSeries(1, 3)[0], [403, 404]);
+        [, $body] = $this->json('GET', '/api/discussions/1', 3);
+        $this->assertArrayNotHasKey('anthologySeries', $body['data']['attributes']);
+    }
+
+    #[Test]
+    public function the_users_column_migration_runs_both_ways_whether_or_not_the_column_is_there(): void
+    {
+        $migration = require __DIR__.'/../../../migrations/2026_11_19_000000_drop_anthology_series_count_from_users.php';
+        $schema = $this->database()->getSchemaBuilder();
+
+        $migration['up']($schema);  // already gone: nothing to do
+        $this->assertFalse($schema->hasColumn('users', 'anthology_series_count'));
+        $migration['down']($schema);
+        $migration['down']($schema);
+        $this->assertTrue($schema->hasColumn('users', 'anthology_series_count'));
+        $migration['up']($schema);
+        $migration['up']($schema);
+        $this->assertFalse($schema->hasColumn('users', 'anthology_series_count'));
+    }
+
+    #[Test]
+    public function a_follower_reduced_to_a_guest_by_a_group_processor_hears_nothing_of_a_members_only_chapter(): void
+    {
+        $this->prepareDatabase([
+            \Flarum\Tags\Tag::class => [['id' => 3, 'name' => 'Members', 'slug' => 'members', 'position' => 2, 'is_restricted' => 1]],
+            'group_permission' => [['group_id' => \Flarum\Group\Group::MEMBER_ID, 'permission' => 'tag3.viewForum']],
+            \Flarum\Discussion\Discussion::class => [['id' => 6, 'title' => 'Chapter 6', 'slug' => 'chapter-6', 'created_at' => \Carbon\Carbon::now(), 'last_posted_at' => \Carbon\Carbon::now(), 'user_id' => 2, 'first_post_id' => 6, 'comment_count' => 1, 'is_private' => 0]],
+            \Flarum\Post\Post::class => [['id' => 6, 'discussion_id' => 6, 'created_at' => \Carbon\Carbon::now(), 'user_id' => 2, 'type' => 'comment', 'content' => '<t><p>Members only</p></t>', 'number' => 1]],
+            'discussion_tag' => [['discussion_id' => 6, 'tag_id' => 3]],
+        ]);
+        $series = $this->series();
+        $this->add(1, $series['id']);
+        $this->patchSeries($series['id'], 3, ['following' => true]);
+        $this->patchSeries($series['id'], 4, ['following' => true]);
+
+        // What flarum/suspend does to a suspended member: their permissions come from the guest group only.
+        $processors = new \ReflectionProperty(User::class, 'groupProcessors');
+        $before = $processors->getValue();
+        User::addGroupProcessor(fn (User $user, array $ids) => $user->id === 3 ? [\Flarum\Group\Group::GUEST_ID] : $ids);
+        try {
+            $this->add(6, $series['id']);
+        } finally {
+            $processors->setValue(null, $before);
+        }
+
+        $sent = $this->database()->table('notifications')->where('type', 'anthologyNewChapter')->where('subject_id', 6)->pluck('user_id')->map(fn ($id) => (int) $id)->all();
+        $this->assertSame([4], $sent);
     }
 }

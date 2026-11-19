@@ -10,7 +10,7 @@ Group discussions into series: novels written chapter by chapter, serials, tutor
 - **On every chapter**, under its title: "Chapter 3 of 6", the series, and previous / all chapters / next. After the chapter's text (its first post) a **Next chapter** button, before the replies.
 - **Adding a chapter**: open a discussion you started, choose **Add to a series** in its menu, and pick one of your series or start a new one. It becomes the newest chapter. The same menu moves it to another series or takes it out.
 - **Follow** a series to get a notification (and an email, if you want one) when a new chapter is added.
-- **A directory** at `/series` with Ongoing / Complete, sorting by latest chapter, newest, most followed or title, and a title search. A **Series** tab on the profiles of members who have one.
+- **A directory** at `/series` with Ongoing / Complete, sorting by latest chapter, newest, most followed or title, and a search that finds a title by the start of any of its words. A **Series** tab on members' profiles with how many series they have published.
 - **The owner** edits the title, description, status and cover, reorders chapters and removes them from the series page.
 - **Call it what fits your forum**: series, novel, story or book. Menus and buttons follow ("Add to a novel", "Novels").
 
@@ -25,6 +25,10 @@ Group discussions into series: novels written chapter by chapter, serials, tutor
 Everything Anthology shows goes through Flarum's own discussion visibility. A chapter in a tag a reader can't open is not listed, counted, linked from the chapter before it or announced to them, and a series whose chapters they can't see doesn't exist for them.
 
 Reading progress is Flarum's own record of which discussions a member has opened, so nothing new is stored while reading, and chapters read before Anthology was installed count too.
+
+## For developers
+
+Series are a JSON:API resource, `anthology-series` (`/api/anthology-series`): list with `filter[user|mine|published|status|title|tag]` and `sort=lastChapterAt|createdAt|followerCount|title`, show, create, update (including `following` and `chapterOrder`) and delete. A discussion joins a series by `anthologySeriesId` on the discussion itself (`null` takes it out). The cover upload, being multipart, is the one custom route: `POST`/`DELETE /api/anthology-series/{id}/cover`.
 
 ## Permissions
 

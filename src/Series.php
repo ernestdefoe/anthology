@@ -4,6 +4,7 @@ namespace Ernestdefoe\Anthology;
 
 use Carbon\Carbon;
 use Flarum\Database\AbstractModel;
+use Flarum\Database\ScopeVisibilityTrait;
 use Flarum\Discussion\Discussion;
 use Flarum\User\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,6 +28,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  */
 class Series extends AbstractModel
 {
+    use ScopeVisibilityTrait;
+
     public const STATUSES = ['ongoing', 'complete'];
 
     protected $table = 'anthology_series';

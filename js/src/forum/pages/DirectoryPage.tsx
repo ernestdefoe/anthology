@@ -50,7 +50,8 @@ export default class DirectoryPage extends Page {
     if (this.status) filter.status = this.status;
     if (this.tag) filter.tag = this.tag;
     if (this.query.trim()) filter.q = this.query.trim();
-    const params: Record<string, unknown> = { filter, sort: this.sort };
+    // Only series with a chapter to open: an empty one stays off the directory, even for its owner.
+    const params: Parameters<typeof listSeries>[0] = { filter, sort: this.sort, published: true };
     if (more && this.next) params.page = { offset: this.next };
     // The tag menu comes with the first page.
     const first = !more && !this.asked;
@@ -76,10 +77,6 @@ export default class DirectoryPage extends Page {
   }
 
   view(): Mithril.Children {
-    const sorts: Record<string, string> = {};
-    SORTS.forEach((s) => (sorts[s] = extractText(t('directory.sort.' + s))));
-    const tags: Record<string, string> = { '': extractText(t('directory.all_tags')) };
-    this.tags.forEach((tag) => (tags[tag.slug] = tag.name));
     const home = app.forum.attribute('defaultRoute') === '/series';
 
     return (
@@ -88,96 +85,108 @@ export default class DirectoryPage extends Page {
         hero={home ? () => IndexPage.prototype.hero.call(this as any) : undefined}
         sidebar={() => <IndexSidebar />}
       >
-        <div className="AnthologyHead">
-          <h2 className="AnthologyHead-title">{t('nav')}</h2>
-          <div className="AnthologyHead-actions">
-            {home ? (
-              <LinkButton className="Button" icon="fas fa-comments" href={app.route('index')}>
-                {t('directory.forum')}
-              </LinkButton>
-            ) : null}
-            {app.forum.attribute('canCreateSeries') ? (
-              <Button
-                className="Button Button--primary"
-                icon="fas fa-plus"
-                onclick={() => app.modal.show(() => import('../modals/SeriesEditModal'), { onsave: (card: Card) => m.route.set(seriesUrl(card)) })}
-              >
-                {t('directory.new')}
-              </Button>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="AnthologyToolbar">
-          <div className="AnthologyTabs" role="tablist">
-            {STATUSES.map((status) => (
-              <Button
-                className={'Button Button--flat' + (this.status === status ? ' active' : '')}
-                role="tab"
-                aria-selected={this.status === status ? 'true' : 'false'}
-                onclick={() => {
-                  this.status = status;
-                  this.load();
-                }}
-              >
-                {status ? t('status.' + status) : t('directory.all')}
-              </Button>
-            ))}
-          </div>
-          {this.tags.length ? (
-            <Select
-              className="AnthologyToolbar-tag"
-              options={tags}
-              value={this.tag}
-              aria-label={extractText(t('directory.tag_label'))}
-              onchange={(value: string) => {
-                this.tag = value;
-                this.load();
-              }}
-            />
-          ) : null}
-          <Select
-            options={sorts}
-            value={this.sort}
-            aria-label={extractText(t('directory.sort_label'))}
-            onchange={(value: string) => {
-              this.sort = value;
-              this.load();
-            }}
-          />
-          <input
-            className="FormControl AnthologyToolbar-search"
-            type="search"
-            placeholder={extractText(t('directory.search'))}
-            aria-label={extractText(t('directory.search'))}
-            value={this.query}
-            oninput={(e: InputEvent) => {
-              this.query = (e.target as HTMLInputElement).value;
-              window.clearTimeout(this.timer);
-              this.timer = window.setTimeout(() => this.load(), 300);
-            }}
-          />
-        </div>
-
-        <div className="AnthologyGrid">
-          {this.series.map((series) => (
-            <SeriesCard key={series.id} series={series} />
-          ))}
-        </div>
-        {this.loading ? <LoadingIndicator display="block" /> : null}
-        {!this.loading && !this.series.length ? (
-          <p className="AnthologyEmpty">
-            {this.query || this.status || this.tag
-              ? t('directory.no_results')
-              : t(app.forum.attribute('canCreateSeries') ? 'directory.empty' : 'directory.empty_guest')}
-          </p>
-        ) : null}
-        {!this.loading && this.next ? (
-          <Button className="Button AnthologyMore" onclick={() => this.load(true)}>
-            {t('directory.more')}
-          </Button>
-        ) : null}
+        {this.head(home)}
+        {this.toolbar()}
+        {this.results()}
       </PageStructure>
     );
+  }
+
+  head(home: boolean): Mithril.Children {
+    return (
+      <div className="AnthologyHead">
+        <h2 className="AnthologyHead-title">{t('nav')}</h2>
+        <div className="AnthologyHead-actions">
+          {home ? (
+            <LinkButton className="Button" icon="fas fa-comments" href={app.route('index')}>
+              {t('directory.forum')}
+            </LinkButton>
+          ) : null}
+          {app.forum.attribute('canCreateSeries') ? (
+            <Button
+              className="Button Button--primary"
+              icon="fas fa-plus"
+              onclick={() => app.modal.show(() => import('../modals/SeriesEditModal'), { onsave: (card: Card) => m.route.set(seriesUrl(card)) })}
+            >
+              {t('directory.new')}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  /** Status tabs, the tag menu (Tags on), the sort and the search. */
+  toolbar(): Mithril.Children {
+    const sorts: Record<string, string> = {};
+    SORTS.forEach((s) => (sorts[s] = extractText(t('directory.sort.' + s))));
+    const tags: Record<string, string> = { '': extractText(t('directory.all_tags')) };
+    this.tags.forEach((tag) => (tags[tag.slug] = tag.name));
+    const pick = (apply: (value: string) => void) => (value: string) => {
+      apply(value);
+      this.load();
+    };
+
+    return (
+      <div className="AnthologyToolbar">
+        <div className="AnthologyTabs" role="tablist">
+          {STATUSES.map((status) => (
+            <Button
+              className={'Button Button--flat' + (this.status === status ? ' active' : '')}
+              role="tab"
+              aria-selected={this.status === status ? 'true' : 'false'}
+              onclick={() => pick((v) => (this.status = v))(status)}
+            >
+              {status ? t('status.' + status) : t('directory.all')}
+            </Button>
+          ))}
+        </div>
+        {this.tags.length ? (
+          <Select
+            className="AnthologyToolbar-tag"
+            options={tags}
+            value={this.tag}
+            aria-label={extractText(t('directory.tag_label'))}
+            onchange={pick((v) => (this.tag = v))}
+          />
+        ) : null}
+        <Select options={sorts} value={this.sort} aria-label={extractText(t('directory.sort_label'))} onchange={pick((v) => (this.sort = v))} />
+        <input
+          className="FormControl AnthologyToolbar-search"
+          type="search"
+          placeholder={extractText(t('directory.search'))}
+          aria-label={extractText(t('directory.search'))}
+          value={this.query}
+          oninput={(e: InputEvent) => {
+            this.query = (e.target as HTMLInputElement).value;
+            window.clearTimeout(this.timer);
+            this.timer = window.setTimeout(() => this.load(), 300);
+          }}
+        />
+      </div>
+    );
+  }
+
+  results(): Mithril.Children {
+    return [
+      <div className="AnthologyGrid">
+        {this.series.map((series) => (
+          <SeriesCard key={series.id} series={series} />
+        ))}
+      </div>,
+      this.loading ? <LoadingIndicator display="block" /> : null,
+      !this.loading && !this.series.length ? (
+        <p className="AnthologyEmpty">
+          {this.query || this.status || this.tag
+            ? t('directory.no_results')
+            : t(app.forum.attribute('canCreateSeries') ? 'directory.empty' : 'directory.empty_guest')}
+        </p>
+      ) : null,
+      !this.loading && this.next ? (
+        <Button className="Button AnthologyMore" onclick={() => this.load(true)}>
+          {t('directory.more')}
+        </Button>
+      ) : null,
+    ];
   }
 }

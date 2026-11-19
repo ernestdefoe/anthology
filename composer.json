@@ -52,13 +52,19 @@
                 "name": "fas fa-book-bookmark",
                 "backgroundColor": "#7c3aed",
                 "color": "#fff"
-            }
+            },
+            "optional-dependencies": [
+                "flarum/tags"
+            ]
         }
     },
     "require-dev": {
         "flarum/phpstan": "^2.0",
         "flarum/tags": "^2.0",
         "flarum/testing": "^2.0"
+    },
+    "suggest": {
+        "flarum/tags": "Filter the series directory by the tags its chapters are in."
     },
     "config": {
         "sort-packages": true

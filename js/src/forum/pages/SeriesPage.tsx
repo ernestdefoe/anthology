@@ -8,6 +8,7 @@ import Icon from 'flarum/common/components/Icon';
 import extractText from 'flarum/common/utils/extractText';
 import humanTime from 'flarum/common/helpers/humanTime';
 import type Mithril from 'mithril';
+import type Discussion from 'flarum/common/models/Discussion';
 import { deleteSeries, follow, removeChapter, reorder, showSeries } from '../../common/api';
 import { chapterUrl, routeId, seriesUrl } from '../../common/urls';
 import type { ChapterItem, Series, SeriesCard } from '../../common/api';
@@ -121,20 +122,7 @@ export default class SeriesPage extends Page {
           </div>
         ) : null}
 
-        {series.canFollow || !user ? (
-          <div className="AnthologySide-card">
-            <Button
-              className={'Button Button--block' + (series.following ? ' AnthologyFollow--on' : '')}
-              icon={series.following ? 'fas fa-bell' : 'far fa-bell'}
-              loading={this.busy}
-              aria-pressed={series.following ? 'true' : 'false'}
-              onclick={() => this.toggleFollow(series)}
-            >
-              {series.following ? t('series.following') : t('series.follow')}
-            </Button>
-            <p className="AnthologySide-note">{t('series.follow_help')}</p>
-          </div>
-        ) : null}
+        {series.canFollow || !user ? this.followCard(series) : null}
 
         {series.canEdit ? (
           <div className="AnthologySide-actions">
@@ -155,6 +143,24 @@ export default class SeriesPage extends Page {
           <Icon name="fas fa-arrow-left" /> {t('series.back')}
         </Link>
       </nav>
+    );
+  }
+
+  /** Follow: told of each new chapter. A guest is asked to log in. */
+  followCard(series: Series): Mithril.Children {
+    return (
+      <div className="AnthologySide-card">
+        <Button
+          className={'Button Button--block' + (series.following ? ' AnthologyFollow--on' : '')}
+          icon={series.following ? 'fas fa-bell' : 'far fa-bell'}
+          loading={this.busy}
+          aria-pressed={series.following ? 'true' : 'false'}
+          onclick={() => this.toggleFollow(series)}
+        >
+          {series.following ? t('series.following') : t('series.follow')}
+        </Button>
+        <p className="AnthologySide-note">{t('series.follow_help')}</p>
+      </div>
     );
   }
 
@@ -243,7 +249,7 @@ export default class SeriesPage extends Page {
       series.chapters = series.chapters.filter((c) => c !== chapter);
       series.chapterCount = series.chapters.length;
       // A discussion page already in the store learns it left the series.
-      app.store.getById<any>('discussions', String(chapter.id))?.pushAttributes({ anthologySeries: null });
+      app.store.getById<Discussion>('discussions', String(chapter.id))?.pushAttributes({ anthologySeries: null });
       m.redraw();
     }, failed);
   }

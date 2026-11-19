@@ -8,7 +8,6 @@ import DiscussionControls from 'flarum/forum/utils/DiscussionControls';
 import type Discussion from 'flarum/common/models/Discussion';
 import type { DiscussionSeries } from '../common/api';
 import { ChapterBar, NextChapter } from './components/ChapterBar';
-import NewChapterNotification from './components/NewChapterNotification';
 import { t } from './util';
 
 export { default as extend } from './extend';
@@ -23,14 +22,6 @@ const seriesOf = (discussion: Discussion) => discussion.attribute<DiscussionSeri
  * wiring and the chapter bar. Every page and modal is its own chunk.
  */
 app.initializers.add('ernestdefoe-anthology', () => {
-  // When the directory is the home page, core moves the last route at /series to '/': this one keeps /series working.
-  app.routes['anthology.directory'] = { path: '/series', component: () => import('./pages/DirectoryPage') };
-  app.routes['anthology.index'] = { path: '/series', component: () => import('./pages/DirectoryPage') };
-  app.routes['anthology.series'] = { path: '/series/:id', component: () => import('./pages/SeriesPage') };
-  app.routes['user.anthology'] = { path: '/u/:username/series', component: () => import('./pages/UserSeriesPage') };
-
-  app.notificationComponents.anthologyNewChapter = NewChapterNotification;
-
   extend(IndexSidebar.prototype, 'navItems', function (items) {
     if (!app.forum.attribute('canViewSeries') || app.forum.attribute('anthologyShowNav') === false) return;
 

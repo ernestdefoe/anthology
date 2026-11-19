@@ -1,4 +1,3 @@
-import app from 'flarum/forum/app';
 import FormModal from 'flarum/common/components/FormModal';
 import type { IFormModalAttrs } from 'flarum/common/components/FormModal';
 import Button from 'flarum/common/components/Button';
@@ -68,31 +67,38 @@ export default class SeriesEditModal extends FormModal<Attrs> {
               <Select options={statuses} value={this.status()} onchange={this.status} />
             </div>
           ) : null}
-          <div className="Form-group AnthologyEditModal-cover">
-            <label for="anthology-cover">{t('edit_modal.cover')}</label>
-            <div className="helpText">{t('edit_modal.cover_help')}</div>
-            <div className="AnthologyEditModal-coverRow">
-              <Cover url={this.dropCover ? null : this.coverUrl} title={this.name()} className="AnthologyEditModal-preview" />
-              <div className="AnthologyEditModal-coverActions">
-                <input
-                  id="anthology-cover"
-                  className="FormControl"
-                  type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp"
-                  onchange={(e: Event) => this.pick((e.target as HTMLInputElement).files?.[0] || null)}
-                />
-                {this.coverUrl && !this.dropCover ? (
-                  <Button className="Button Button--link" icon="fas fa-xmark" onclick={() => this.clearCover()}>
-                    {t('edit_modal.cover_remove')}
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          </div>
+          {this.coverField()}
           <div className="Form-group">
             <Button className="Button Button--primary Button--block" type="submit" loading={this.loading}>
               {editing ? t('edit_modal.save') : t('edit_modal.create')}
             </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /** The cover: a preview, a file picker and Remove. Uploaded after the series is saved. */
+  coverField(): Mithril.Children {
+    return (
+      <div className="Form-group AnthologyEditModal-cover">
+        <label for="anthology-cover">{t('edit_modal.cover')}</label>
+        <div className="helpText">{t('edit_modal.cover_help')}</div>
+        <div className="AnthologyEditModal-coverRow">
+          <Cover url={this.dropCover ? null : this.coverUrl} title={this.name()} className="AnthologyEditModal-preview" />
+          <div className="AnthologyEditModal-coverActions">
+            <input
+              id="anthology-cover"
+              className="FormControl"
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              onchange={(e: Event) => this.pick((e.target as HTMLInputElement).files?.[0] || null)}
+            />
+            {this.coverUrl && !this.dropCover ? (
+              <Button className="Button Button--link" icon="fas fa-xmark" onclick={() => this.clearCover()}>
+                {t('edit_modal.cover_remove')}
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>

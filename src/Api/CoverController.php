@@ -2,40 +2,44 @@
 
 namespace Ernestdefoe\Anthology\Api;
 
+use Ernestdefoe\Anthology\Access;
 use Ernestdefoe\Anthology\Covers;
+use Ernestdefoe\Anthology\Series;
 use Flarum\Http\RequestUtil;
+use Flarum\User\Exception\PermissionDeniedException;
+use Illuminate\Support\Arr;
 use Laminas\Diactoros\Response\JsonResponse;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Message\UploadedFileInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 
-/** POST /api/anthology/series/{id}/cover (multipart `cover`) and DELETE to remove it. */
-class CoverController implements RequestHandlerInterface
+/**
+ * A series cover: UploadCoverController and RemoveCoverController. Their own
+ * handlers because an upload is multipart, not a JSON:API document; the rest
+ * of a series is SeriesResource.
+ */
+abstract class CoverController implements RequestHandlerInterface
 {
-    use Concerns;
-
-    public function __construct(private Covers $covers)
+    public function __construct(protected Covers $covers)
     {
     }
+
+    /** The new cover path (null: none), for a series the actor may edit. */
+    abstract protected function cover(ServerRequestInterface $request): ?string;
 
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $actor = RequestUtil::getActor($request);
-        $series = $this->editableSeries($actor, $this->routeId($request));
-        $old = $series->cover_path;
-
-        if ($request->getMethod() === 'DELETE') {
-            $series->cover_path = null;
-        } else {
-            $file = $request->getUploadedFiles()['cover'] ?? null;
-            if (! $file instanceof UploadedFileInterface) {
-                $this->invalid('cover', 'upload_failed');
-            }
-            $series->cover_path = $this->covers->store($file);
+        $actor->assertRegistered();
+        $series = Series::query()->findOrFail((int) Arr::get($request->getAttributes(), 'routeParameters.id'));
+        if (! Access::canView($actor) || ! Access::canEdit($actor, $series)) {
+            throw new PermissionDeniedException();
         }
 
+        $old = $series->cover_path;
+        $series->cover_path = $this->cover($request);
         $series->save();
+
         if ($old && $old !== $series->cover_path) {
             $this->covers->delete($old);
         }

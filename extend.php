@@ -11,20 +11,19 @@
  * a tag they can't read is never listed, counted or announced to them.
  */
 
-use Ernestdefoe\Anthology\Access;
+use Ernestdefoe\Anthology\SeriesVisibility;
 use Ernestdefoe\Anthology\Api;
 use Ernestdefoe\Anthology\Content\SeriesDocument;
-use Ernestdefoe\Anthology\DiscussionSeries;
 use Ernestdefoe\Anthology\Notification\NewChapterBlueprint;
+use Ernestdefoe\Anthology\Policy;
+use Ernestdefoe\Anthology\Search;
 use Ernestdefoe\Anthology\Series;
-use Flarum\Api\Context;
+use Ernestdefoe\Anthology\Tags;
 use Flarum\Api\Resource\DiscussionResource;
 use Flarum\Api\Resource\ForumResource;
 use Flarum\Api\Resource\UserResource;
-use Flarum\Api\Schema;
-use Flarum\Discussion\Discussion;
 use Flarum\Extend;
-use Flarum\User\User;
+use Flarum\Search\Database\DatabaseSearchDriver;
 
 $series = '{id:\d+(?:-[^/]*)?}';
 
@@ -46,25 +45,30 @@ return [
     (new Extend\View())
         ->namespace('ernestdefoe-anthology', __DIR__.'/views'),
 
+    // Series are a JSON:API resource. Only the cover upload, being multipart, has its own handler.
+    new Extend\ApiResource(Api\SeriesResource::class),
+
     (new Extend\Routes('api'))
-        ->get('/anthology/series', 'anthology.series.index', Api\ListSeriesController::class)
-        ->post('/anthology/series', 'anthology.series.create', Api\SaveSeriesController::class)
-        ->get('/anthology/series/{id:[0-9]+}', 'anthology.series.show', Api\ShowSeriesController::class)
-        ->patch('/anthology/series/{id:[0-9]+}', 'anthology.series.update', Api\SaveSeriesController::class)
-        ->delete('/anthology/series/{id:[0-9]+}', 'anthology.series.delete', Api\DeleteSeriesController::class)
-        ->post('/anthology/series/{id:[0-9]+}/cover', 'anthology.series.cover', Api\CoverController::class)
-        ->delete('/anthology/series/{id:[0-9]+}/cover', 'anthology.series.cover.delete', Api\CoverController::class)
-        ->post('/anthology/series/{id:[0-9]+}/follow', 'anthology.series.follow', Api\FollowController::class)
-        ->delete('/anthology/series/{id:[0-9]+}/follow', 'anthology.series.unfollow', Api\FollowController::class)
-        ->patch('/anthology/series/{id:[0-9]+}/order', 'anthology.series.order', Api\OrderController::class)
-        ->post('/anthology/chapters', 'anthology.chapters.add', Api\ChapterController::class)
-        ->delete('/anthology/chapters/{id:[0-9]+}', 'anthology.chapters.remove', Api\ChapterController::class),
+        ->post('/anthology-series/{id:[0-9]+}/cover', 'anthology.series.cover', Api\UploadCoverController::class)
+        ->delete('/anthology-series/{id:[0-9]+}/cover', 'anthology.series.cover.delete', Api\RemoveCoverController::class),
+
+    (new Extend\Policy())
+        ->modelPolicy(Series::class, Policy\SeriesPolicy::class),
+
+    (new Extend\ModelVisibility(Series::class))
+        ->scope(SeriesVisibility::class),
+
+    (new Extend\SearchDriver(DatabaseSearchDriver::class))
+        ->addSearcher(Series::class, Search\SeriesSearcher::class)
+        ->addFilter(Search\SeriesSearcher::class, Search\Filter\UserFilter::class)
+        ->addFilter(Search\SeriesSearcher::class, Search\Filter\MineFilter::class)
+        ->addFilter(Search\SeriesSearcher::class, Search\Filter\PublishedFilter::class)
+        ->addFilter(Search\SeriesSearcher::class, Search\Filter\StatusFilter::class)
+        ->addFilter(Search\SeriesSearcher::class, Search\Filter\TitleFilter::class)
+        ->addFilter(Search\SeriesSearcher::class, Search\Filter\TagFilter::class),
 
     (new Extend\Notification())
         ->type(NewChapterBlueprint::class, ['alert', 'email']),
-
-    (new Extend\Model(User::class))
-        ->cast('anthology_series_count', 'integer'),
 
     (new Extend\Settings())
         ->default('ernestdefoe-anthology.noun', 'series')
@@ -72,36 +76,17 @@ return [
         ->serializeToForum('anthologyNoun', 'ernestdefoe-anthology.noun', fn ($v) => in_array($v, ['series', 'novel', 'story', 'book'], true) ? $v : 'series')
         ->serializeToForum('anthologyShowNav', 'ernestdefoe-anthology.show_nav', 'boolval'),
 
-    // Permissions already loaded with the actor's groups: no query.
     (new Extend\ApiResource(ForumResource::class))
-        ->fields(fn () => [
-            Schema\Boolean::make('canViewSeries')
-                ->get(fn ($forum, Context $context) => Access::canView($context->getActor())),
-            Schema\Boolean::make('canCreateSeries')
-                ->get(fn ($forum, Context $context) => Access::canCreate($context->getActor())),
-            Schema\Boolean::make('canModerateSeries')
-                ->get(fn ($forum, Context $context) => Access::canModerate($context->getActor())),
-        ]),
+        ->fields(Api\Fields\ForumFields::class),
 
-    // The profile only, never lists: the series this reader can open, one count query.
-    // A series counts once it has a chapter they can read, so an empty one (a draft)
-    // or one whose chapters are all in a hidden tag is never counted or hinted at.
     (new Extend\ApiResource(UserResource::class))
-        ->fields(fn () => [
-            Schema\Integer::make('anthologySeriesCount')
-                ->visible(fn (User $user, Context $context) => $context->showing(UserResource::class) && Access::canView($context->getActor()))
-                ->get(fn (User $user, Context $context) => Series::query()
-                    ->where('user_id', $user->id)
-                    ->whereHas('discussions', fn ($d) => $d->whereVisibleTo($context->getActor()))
-                    ->count()),
-        ]),
+        ->fields(Api\Fields\UserFields::class),
 
-    // The discussion page only, never lists: which series this chapter is in.
     (new Extend\ApiResource(DiscussionResource::class))
-        ->fields(fn () => [
-            Schema\Arr::make('anthologySeries')
-                ->nullable()
-                ->visible(fn (Discussion $d, Context $context) => $context->showing(DiscussionResource::class) && Access::canView($context->getActor()))
-                ->get(fn (Discussion $d, Context $context) => resolve(DiscussionSeries::class)->for($d, $context->getActor())),
-        ]),
+        ->fields(Api\Fields\DiscussionFields::class),
+
+    // The directory's tag filter and menu exist only while Tags is enabled.
+    (new Extend\Conditional())
+        ->whenExtensionEnabled('flarum-tags', fn () => [(new Extend\ServiceProvider())->register(Tags\TagsServiceProvider::class)])
+        ->whenExtensionDisabled('flarum-tags', fn () => [(new Extend\ServiceProvider())->register(Tags\NoTagsServiceProvider::class)]),
 ];

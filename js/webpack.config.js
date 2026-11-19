@@ -7,10 +7,12 @@ const NS = 'ernestdefoe-anthology';
  *
  * Flarum's registry finds a chunk's URL by its id alone, and every extension's
  * chunks report to one shared chunk-loading array. Webpack's default ids are
- * 3-digit numbers , so two extensions can share
- * one: the wrong file is fetched, or the chunk counts as already loaded, and
- * the page dies only on forums running both. So: ids prefixed with our
- * extension id, and our own chunk-loading global.
+ * 3-digit numbers, so two extensions can share one: the wrong file is
+ * fetched, or the chunk counts as already loaded, and the page dies only on
+ * forums running both. So: ids prefixed with our extension id, and our own
+ * chunk-loading global. flarum-webpack-config 3.1 with core 2.0.2 does this
+ * itself; this stays for forums still on core 2.0.0 and 2.0.1, which
+ * composer.json allows (flarum/core ^2.0).
  */
 class NamespacedChunkIds {
   apply(compiler) {

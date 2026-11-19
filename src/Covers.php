@@ -3,11 +3,11 @@
 namespace Ernestdefoe\Anthology;
 
 use Flarum\Foundation\ValidationException;
+use Flarum\Locale\TranslatorInterface;
 use Illuminate\Contracts\Filesystem\Factory;
 use Illuminate\Support\Str;
 use Intervention\Image\ImageManager;
 use Psr\Http\Message\UploadedFileInterface;
-use Symfony\Contracts\Translation\TranslatorInterface;
 
 /**
  * Cover images. The bytes are sniffed, decoded and re-encoded to WebP (so
@@ -33,9 +33,9 @@ class Covers
         return $series->cover_path ? $this->filesystems->disk('flarum-assets')->url($series->cover_path) : null;
     }
 
-    public function store(UploadedFileInterface $file): string
+    public function store(mixed $file): string
     {
-        if ($file->getError() !== UPLOAD_ERR_OK || $file->getSize() === 0) {
+        if (! $file instanceof UploadedFileInterface || $file->getError() !== UPLOAD_ERR_OK || $file->getSize() === 0) {
             $this->fail('upload_failed');
         }
         if ($file->getSize() > self::MAX_BYTES) {
@@ -58,6 +58,8 @@ class Covers
             $image->scaleDown(width: self::MAX_SIDE, height: self::MAX_SIDE * 2);
             $encoded = (string) $image->toWebp(82);
         } catch (\Throwable) {
+            // Not swallowed: a file the decoder can't read is the uploader's mistake, so they get
+            // the translated "not an image" error, and there is nothing for an admin to act on.
             $this->fail('not_an_image');
         }
 

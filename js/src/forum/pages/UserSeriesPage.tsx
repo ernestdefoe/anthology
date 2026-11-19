@@ -15,6 +15,8 @@ import { failed, t } from '../util';
 export default class UserSeriesPage extends UserPage {
   series: Card[] | null = null;
   shownFor: string | null = null;
+  next: number | null = null;
+  loading = false;
 
   oninit(vnode: Mithril.Vnode) {
     super.oninit(vnode);
@@ -28,13 +30,22 @@ export default class UserSeriesPage extends UserPage {
     this.shownFor = user.id()!;
     this.series = null;
     app.setTitle(extractText(t('profile.nav')) + ' – ' + user.displayName());
-    listSeries({ filter: { user: user.id() }, sort: 'latest' }).then(
-      ({ data }) => {
-        this.series = data;
+    this.load(user);
+  }
+
+  /** A page of 24; Load more for the next. */
+  load(user: User, offset = 0) {
+    this.loading = true;
+    listSeries({ filter: { user: user.id() }, sort: 'latest', page: { offset } }).then(
+      ({ data, meta }) => {
+        this.series = offset ? [...(this.series || []), ...data] : data;
+        this.next = meta.next;
+        this.loading = false;
         m.redraw();
       },
       (e: any) => {
-        this.series = [];
+        this.series = this.series || [];
+        this.loading = false;
         failed(e);
         m.redraw();
       }
@@ -69,6 +80,11 @@ export default class UserSeriesPage extends UserPage {
         ) : (
           <p className="AnthologyEmpty">{t('profile.empty')}</p>
         )}
+        {this.series && this.next ? (
+          <Button className="Button AnthologyMore" loading={this.loading} onclick={() => this.load(this.user!, this.next!)}>
+            {t('directory.more')}
+          </Button>
+        ) : null}
       </div>
     );
   }

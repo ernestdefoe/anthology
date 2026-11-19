@@ -31,7 +31,7 @@ class SeriesDocument
             return $document;
         }
 
-        $series = Series::query()->find($id);
+        $series = Series::query()->whereVisibleTo($actor)->find($id);
         $chapters = $series?->discussions()->whereVisibleTo($actor)->get(['discussions.id', 'discussions.title', 'discussions.slug']);
         if (! $series || ! $chapters || $chapters->isEmpty()) {
             return $document;

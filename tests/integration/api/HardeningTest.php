@@ -18,11 +18,10 @@ class HardeningTest extends AnthologyTestCase
         $id = $this->database()->table('anthology_series')->insertGetId(['user_id' => 2, 'title' => 'Mine', 'slug' => 'mine', 'status' => 'ongoing', 'last_chapter_at' => Carbon::now(), 'created_at' => Carbon::now(), 'updated_at' => Carbon::now()]);
         $this->database()->table('anthology_chapters')->insert(['discussion_id' => 1, 'series_id' => $id, 'position' => 1, 'created_at' => Carbon::now()]);
 
-        [$status] = $this->json('PATCH', '/api/anthology/series/'.$id, 2, ['data' => ['title' => 'Renamed']]);
+        [$status] = $this->patchSeries($id, 2, ['title' => 'Renamed']);
         $this->assertSame(403, $status);
         // Taking their own discussion out of a series still works.
-        [$status] = $this->json('DELETE', '/api/anthology/chapters/1', 2);
-        $this->assertSame(200, $status);
+        $this->assertNull($this->add(1, null, 2));
     }
 
     #[Test]
@@ -33,7 +32,7 @@ class HardeningTest extends AnthologyTestCase
         file_put_contents($path, $this->bombPng(20000, 20000));
         $file = new UploadedFile($path, filesize($path), UPLOAD_ERR_OK, 'cover.png', 'image/png');
 
-        $request = $this->request('POST', '/api/anthology/series/'.$series['id'].'/cover', ['authenticatedAs' => 2])->withUploadedFiles(['cover' => $file]);
+        $request = $this->request('POST', '/api/anthology-series/'.$series['id'].'/cover', ['authenticatedAs' => 2])->withUploadedFiles(['cover' => $file]);
         $response = $this->send($request);
 
         $this->assertSame(422, $response->getStatusCode(), (string) $response->getBody());
@@ -46,7 +45,7 @@ class HardeningTest extends AnthologyTestCase
         for ($i = 0; $i < 10; $i++) {
             $this->series("Series $i");
         }
-        [$status] = $this->json('POST', '/api/anthology/series', 2, ['data' => ['title' => 'One too many']]);
+        [$status] = $this->createSeries(2, ['title' => 'One too many']);
         $this->assertSame(429, $status);
 
         // Moderators aren't limited.

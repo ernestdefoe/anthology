@@ -76,21 +76,64 @@ abstract class AnthologyTestCase extends TestCase
         return [$response->getStatusCode(), json_decode($raw, true), $raw];
     }
 
-    /** @return array<string, mixed> */
-    protected function series(string $title = 'The Long Road', int $actor = 2): array
+    /** @return array<string, mixed> A series as id + attributes. */
+    protected function series(string $title = 'The Long Road', int $actor = 2, ?int $owner = null): array
     {
-        [$status, $body, $raw] = $this->json('POST', '/api/anthology/series', $actor, ['data' => ['title' => $title, 'description' => 'A long story.']]);
+        [$status, $series, $raw] = $this->createSeries($actor, ['title' => $title, 'description' => 'A long story.'], $owner);
         $this->assertSame(201, $status, $raw);
 
-        return $body['data'];
+        return $series;
     }
 
-    /** @return array<string, mixed>|null */
-    protected function add(int $discussionId, int $seriesId, int $actor = 2, int $expect = 200): ?array
+    /** @return array{0: int, 1: array<string, mixed>|null, 2: string} */
+    protected function createSeries(?int $actor, array $attributes, ?int $owner = null): array
     {
-        [$status, $body, $raw] = $this->json('POST', '/api/anthology/chapters', $actor, ['data' => ['discussionId' => $discussionId, 'seriesId' => $seriesId]]);
+        $data = ['type' => 'anthology-series', 'attributes' => $attributes];
+        if ($owner) {
+            $data['relationships'] = ['user' => ['data' => ['type' => 'users', 'id' => (string) $owner]]];
+        }
+        [$status, $body, $raw] = $this->json('POST', '/api/anthology-series', $actor, ['data' => $data]);
+
+        return [$status, isset($body['data']['id']) ? $this->flat($body['data']) : null, $raw];
+    }
+
+    /** @return array{0: int, 1: array<string, mixed>|null, 2: string} */
+    protected function patchSeries(int $id, int $actor, array $attributes): array
+    {
+        [$status, $body, $raw] = $this->json('PATCH', '/api/anthology-series/'.$id, $actor, ['data' => ['type' => 'anthology-series', 'id' => (string) $id, 'attributes' => $attributes]]);
+
+        return [$status, isset($body['data']['id']) ? $this->flat($body['data']) : null, $raw];
+    }
+
+    /** @return array{0: int, 1: array<string, mixed>|null} */
+    protected function showSeries(int $id, ?int $actor): array
+    {
+        [$status, $body] = $this->json('GET', '/api/anthology-series/'.$id, $actor);
+
+        return [$status, isset($body['data']['id']) ? $this->flat($body['data']) : null];
+    }
+
+    /** @return array{0: list<array<string, mixed>>, 1: array<string, mixed>} The series, and the meta. */
+    protected function listSeries(?int $actor, array $query = []): array
+    {
+        [$status, $body, $raw] = $this->json('GET', '/api/anthology-series', $actor, null, $query);
+        $this->assertSame(200, $status, $raw);
+
+        return [array_map(fn ($r) => $this->flat($r), $body['data']), $body['meta'] ?? []];
+    }
+
+    /** Files a discussion under a series (null takes it out). @return array<string, mixed>|null The discussion's anthologySeries. */
+    protected function add(int $discussionId, ?int $seriesId, int $actor = 2, int $expect = 200): ?array
+    {
+        [$status, $body, $raw] = $this->json('PATCH', '/api/discussions/'.$discussionId, $actor, ['data' => ['type' => 'discussions', 'id' => (string) $discussionId, 'attributes' => ['anthologySeriesId' => $seriesId]]]);
         $this->assertSame($expect, $status, $raw);
 
-        return $body['data'] ?? null;
+        return $body['data']['attributes']['anthologySeries'] ?? null;
+    }
+
+    /** @return array<string, mixed> */
+    protected function flat(array $resource): array
+    {
+        return ['id' => (int) $resource['id']] + $resource['attributes'];
     }
 }
