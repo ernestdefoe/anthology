@@ -11,6 +11,7 @@ Group discussions into series: novels written chapter by chapter, serials, tutor
 - **Adding a chapter**: open a discussion you started, choose **Add to a series** in its menu, and pick one of your series or start a new one. It becomes the newest chapter. The same menu moves it to another series or takes it out.
 - **Follow** a series to get a notification (and an email, if you want one) when a new chapter is added.
 - **A directory** at `/series` with Ongoing / Complete, sorting by latest chapter, newest, most followed or title, and a search that finds a title by the start of any of its words. A **Series** tab on members' profiles with how many series they have published.
+- **In the discussion list**, a small book beside a chapter's tags shows which series it belongs to (its name in the tooltip) and opens it. An admin switch turns it off.
 - **The owner** edits the title, description, status and cover, reorders chapters and removes them from the series page.
 - **Call it what fits your forum**: series, novel, story or book. Menus and buttons follow ("Add to a novel", "Novels").
 

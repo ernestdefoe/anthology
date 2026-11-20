@@ -55,6 +55,9 @@ ernestdefoe-anthology:
       remove: "Remove from {the_noun}"
       back: "{noun, select, novel {All novels} story {All stories} book {All books} other {All series}}"
 
+    # The badge beside a chapter's tags in the discussion list: its tooltip and accessible name.
+    list_badge: "{noun, select, novel {Novel} story {Story} book {Book} other {Series}}: {title}"
+
     chapter_bar:
       label: "Chapter {number} of {count}"
       previous: Previous
@@ -119,6 +122,7 @@ ernestdefoe-anthology:
         story: Story
         book: Book
       show_nav: Show a link in the sidebar
+      list_badge: Show series badge in discussion lists
     permissions:
       view: View series
       create: Start series and add own discussions as chapters

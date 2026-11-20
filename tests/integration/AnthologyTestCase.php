@@ -136,4 +136,17 @@ abstract class AnthologyTestCase extends TestCase
     {
         return ['id' => (int) $resource['id']] + $resource['attributes'];
     }
+
+    /** @return array<int, mixed> discussion id => its badge (absent: the key is missing) */
+    protected function badges(?int $actor): array
+    {
+        [$status, $body, $raw] = $this->json('GET', '/api/discussions', $actor);
+        $this->assertSame(200, $status, $raw);
+        $out = [];
+        foreach ($body['data'] as $d) {
+            $out[(int) $d['id']] = array_key_exists('anthologySeriesBadge', $d['attributes']) ? $d['attributes']['anthologySeriesBadge'] : 'absent';
+        }
+
+        return $out;
+    }
 }

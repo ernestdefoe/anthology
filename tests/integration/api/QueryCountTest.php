@@ -108,4 +108,26 @@ class QueryCountTest extends AnthologyTestCase
 
         $this->assertQueries($before, '/api/discussions');
     }
+
+    #[Test]
+    public function the_list_badge_is_one_query_for_the_page(): void
+    {
+        $series = $this->series();
+        $this->add(1, $series['id']);
+        $badges = fn (int $actor) => array_column(array_column($this->json('GET', '/api/discussions', $actor)[1]['data'], 'attributes'), 'anthologySeriesBadge');
+        foreach ([3, 0] as $actor) {
+            $one[$actor] = $this->queries('/api/discussions', [], $actor);
+        }
+
+        // A full page (20 discussions): nearly every one a chapter, each in its own series.
+        $this->discussions(19);
+        for ($i = 0; $i < 19; $i++) {
+            $this->add(100 + $i, $this->series("Series $i", 4)['id'], 4);
+        }
+        $this->assertGreaterThanOrEqual(16, count(array_filter($badges(3))));
+
+        foreach ([3, 0] as $actor) {
+            $this->assertQueries($one[$actor], '/api/discussions', [], $actor);
+        }
+    }
 }

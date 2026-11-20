@@ -681,3 +681,28 @@
     padding: 0;
   }
 }
+
+// The series badge beside a chapter's tags in the discussion list: a quiet book, the series name in its tooltip.
+.DiscussionListItem-info .item-anthology {
+  margin-right: 4px;
+}
+.AnthologyBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--border-radius);
+  font-size: 11px;
+  line-height: 1;
+  vertical-align: middle;
+  color: var(--muted-color);
+  background: var(--control-bg);
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--text-color);
+  }
+}

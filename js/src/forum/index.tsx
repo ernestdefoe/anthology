@@ -8,6 +8,8 @@ import DiscussionControls from 'flarum/forum/utils/DiscussionControls';
 import type Discussion from 'flarum/common/models/Discussion';
 import type { DiscussionSeries } from '../common/api';
 import { ChapterBar, NextChapter } from './components/ChapterBar';
+import SeriesBadge from './components/SeriesBadge';
+import type { Ref } from '../common/api';
 import { t } from './util';
 
 export { default as extend } from './extend';
@@ -48,6 +50,12 @@ app.initializers.add('ernestdefoe-anthology', () => {
       </LinkButton>,
       79
     );
+  });
+
+  // In the discussion list, a chapter's series beside its tags (Tags puts them at 10).
+  extend('flarum/forum/components/DiscussionListItem', 'infoItems', function (this: any, items: any) {
+    const series = (this.attrs.discussion as Discussion).attribute<Ref | null | undefined>('anthologySeriesBadge');
+    if (series) items.add('anthology', <SeriesBadge series={series} />, 9);
   });
 
   // "Chapter 3 of 15 · Title" with previous and next, under the title.

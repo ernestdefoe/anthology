@@ -15,6 +15,7 @@ export default [
       help: t('settings.noun_help'),
     }))
     .setting(() => ({ setting: 'ernestdefoe-anthology.show_nav', type: 'boolean', label: t('settings.show_nav') }))
+    .setting(() => ({ setting: 'ernestdefoe-anthology.list_badge', type: 'boolean', label: t('settings.list_badge') }))
     .permission(() => ({ icon: ICON, label: t('permissions.view'), permission: 'anthology.view', allowGuest: true }), 'view')
     .permission(() => ({ icon: ICON, label: t('permissions.create'), permission: 'anthology.create' }), 'start')
     .permission(() => ({ icon: ICON, label: t('permissions.moderate'), permission: 'anthology.moderate' }), 'moderate'),
